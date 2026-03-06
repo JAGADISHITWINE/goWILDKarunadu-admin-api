@@ -1,0 +1,568 @@
+const db = require('../config/db');
+const { encrypt, decrypt } = require("../service/cryptoHelper");
+const ALLOWED_BATCH_STATUSES = new Set(['active', 'inactive', 'full', 'cancelled', 'completed']);
+
+function normalizeBatchStatus(rawStatus) {
+  const normalized = String(rawStatus || '').trim().toLowerCase();
+  if (!normalized) return 'active';
+  return ALLOWED_BATCH_STATUSES.has(normalized) ? normalized : 'active';
+}
+
+async function ensureCollectionColumn(conn) {
+  const [columns] = await conn.query(`SHOW COLUMNS FROM treks LIKE 'collection'`);
+  if (!Array.isArray(columns) || columns.length) {
+    return;
+  }
+
+  await conn.query(`
+    ALTER TABLE treks
+    ADD COLUMN collection VARCHAR(100) NULL AFTER category
+  `);
+}
+
+async function ensureCouponTable(conn) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS trek_coupons (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      trek_id INT NOT NULL,
+      code VARCHAR(60) NOT NULL,
+      discount_type ENUM('percentage', 'flat') NOT NULL DEFAULT 'percentage',
+      discount_value DECIMAL(10,2) NOT NULL,
+      min_booking_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+      max_discount_amount DECIMAL(10,2) NULL,
+      start_date DATETIME NULL,
+      end_date DATETIME NULL,
+      usage_limit INT NULL,
+      usage_count INT NOT NULL DEFAULT 0,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_trek_coupon_code (trek_id, code),
+      KEY idx_trek_coupons_trek_id (trek_id)
+    )
+  `);
+}
+
+function normalizeCouponForInsert(rawCoupon = {}) {
+  if (!rawCoupon || rawCoupon.enabled !== true) return null;
+
+  const code = String(rawCoupon.code || '').trim().toUpperCase();
+  const discountType = String(rawCoupon.discountType || '').trim().toLowerCase();
+  const discountValue = Number(rawCoupon.discountValue);
+  const minBookingAmount = rawCoupon.minBookingAmount === '' || rawCoupon.minBookingAmount === undefined
+    ? 0
+    : Number(rawCoupon.minBookingAmount);
+  const maxDiscountAmount = rawCoupon.maxDiscountAmount === '' || rawCoupon.maxDiscountAmount === undefined
+    ? null
+    : Number(rawCoupon.maxDiscountAmount);
+  const usageLimit = rawCoupon.usageLimit === '' || rawCoupon.usageLimit === undefined
+    ? null
+    : Number(rawCoupon.usageLimit);
+  const startDate = rawCoupon.startDate || null;
+  const endDate = rawCoupon.endDate || null;
+  const isActive = rawCoupon.isActive === false ? 0 : 1;
+
+  if (!code || !discountType || !Number.isFinite(discountValue)) {
+    throw new Error("INVALID_COUPON_FIELDS");
+  }
+  if (!["percentage", "flat"].includes(discountType)) {
+    throw new Error("INVALID_COUPON_TYPE");
+  }
+  if (discountValue <= 0) {
+    throw new Error("INVALID_COUPON_VALUE");
+  }
+  if (discountType === "percentage" && discountValue > 100) {
+    throw new Error("INVALID_COUPON_PERCENT");
+  }
+  if (Number.isFinite(minBookingAmount) && minBookingAmount < 0) {
+    throw new Error("INVALID_COUPON_MIN_AMOUNT");
+  }
+  if (maxDiscountAmount !== null && (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount < 0)) {
+    throw new Error("INVALID_COUPON_MAX_AMOUNT");
+  }
+  if (usageLimit !== null && (!Number.isFinite(usageLimit) || usageLimit < 0)) {
+    throw new Error("INVALID_COUPON_USAGE_LIMIT");
+  }
+
+  return {
+    code,
+    discountType,
+    discountValue,
+    minBookingAmount: Number.isFinite(minBookingAmount) ? minBookingAmount : 0,
+    maxDiscountAmount,
+    startDate,
+    endDate,
+    usageLimit,
+    isActive,
+  };
+}
+
+async function createTrek(trek, files) {
+  const conn = await db.getConnection();
+
+  try {
+    await ensureCollectionColumn(conn);
+    await ensureCouponTable(conn);
+
+    // 🔁 Duplicate check
+    const [[exists]] = await conn.query(
+      `SELECT id FROM treks WHERE name = ? AND location = ?`,
+      [trek.name, trek.location]
+    );
+
+    if (exists) {
+      throw new Error("DUPLICATE_TREK");
+    }
+
+    await conn.beginTransaction();
+
+    // 🏔️ Insert trek
+    const [trekResult] = await conn.query(
+      `INSERT INTO treks (
+        name, location, category, collection, difficulty,
+        fitness_level, description, cover_image,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        trek.name,
+        trek.location,
+        trek.category,
+        trek.collection || null,
+        trek.difficulty,
+        trek.fitnessLevel || null,
+        trek.description || null,
+        files.coverImage[0].path || files.coverImage[0].filename
+      ]
+    );
+
+    const trekId = trekResult.insertId;
+    const coupon = normalizeCouponForInsert(trek.coupon);
+
+    // 🌟 Highlights
+    if (Array.isArray(trek.highlights)) {
+      for (const h of trek.highlights.filter(Boolean)) {
+        await conn.query(
+          `INSERT INTO trek_highlights (trek_id, highlight) VALUES (?, ?)`,
+          [trekId, h]
+        );
+      }
+    }
+
+    // 🎒 Things to carry
+    if (Array.isArray(trek.thingsToCarry)) {
+      trek.thingsToCarry.forEach(async (item, i) => {
+        if (item) {
+          await conn.query(
+            `INSERT INTO trek_things_to_carry (trek_id, item, display_order)
+             VALUES (?, ?, ?)`,
+            [trekId, item, i + 1]
+          );
+        }
+      });
+    }
+
+    // ⚠️ Important notes
+    if (Array.isArray(trek.importantNotes)) {
+      trek.importantNotes.forEach(async (note, i) => {
+        if (note) {
+          await conn.query(
+            `INSERT INTO trek_important_notes (trek_id, note, display_order)
+             VALUES (?, ?, ?)`,
+            [trekId, note, i + 1]
+          );
+        }
+      });
+    }
+
+    // 📦 Batches
+    if (Array.isArray(trek.batches)) {
+      for (const batch of trek.batches) {
+
+        if (!batch.startDate || !batch.endDate) {
+          throw new Error("INVALID_BATCH_DATES");
+        }
+
+        const [batchResult] = await conn.query(
+          `INSERT INTO trek_batches (
+            trek_id, start_date, end_date,
+            available_slots, price,
+            min_age, max_age,
+            min_participants, max_participants,
+            duration, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            trekId,
+            batch.startDate,
+            batch.endDate,
+            batch.availableSlots || null,
+            batch.price || null,
+            batch.minAge || null,
+            batch.maxAge || null,
+            batch.minParticipants || null,
+            batch.maxParticipants || null,
+            batch.duration || null,
+            normalizeBatchStatus(batch.batchStatus)
+          ]
+        );
+
+        const batchId = batchResult.insertId;
+
+        await insertBatchNestedData(conn, batchId, batch);
+      }
+    }
+
+    // 🖼️ Gallery
+    if (files.gallery?.length) {
+      for (const img of files.gallery) {
+        await conn.query(
+          `INSERT INTO trek_images (trek_id, image_url) VALUES (?, ?)`,
+          [trekId, img.path || img.filename]
+        );
+      }
+    }
+
+    // 🎟️ Optional trek coupon
+    if (coupon) {
+      await conn.query(
+        `INSERT INTO trek_coupons
+        (trek_id, code, discount_type, discount_value, min_booking_amount, max_discount_amount, start_date, end_date, usage_limit, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          trekId,
+          coupon.code,
+          coupon.discountType,
+          coupon.discountValue,
+          coupon.minBookingAmount,
+          coupon.maxDiscountAmount,
+          coupon.startDate,
+          coupon.endDate,
+          coupon.usageLimit,
+          coupon.isActive,
+        ]
+      );
+    }
+
+    await conn.commit();
+    return trekId;
+
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+
+async function updateTrek(trekId, trek, files) {
+  const conn = await db.getConnection();
+
+  try {
+    await ensureCollectionColumn(conn);
+    await conn.beginTransaction();
+
+    // ========== UPDATE BASIC TREK INFO ==========
+    let coverImageValue = undefined;
+
+    if (files?.coverImage?.length) {
+      coverImageValue = files.coverImage[0].path || files.coverImage[0].filename;
+    } else if (trek.coverDeleted === true) {
+      coverImageValue = null;
+    }
+
+    let updateQuery = `
+      UPDATE treks SET
+        name = ?,
+        location = ?,
+        category = ?,
+        collection = ?,
+        difficulty = ?,
+        fitness_level = ?,
+        description = ?,
+        updated_at = NOW()
+    `;
+
+    const params = [
+      trek.name,
+      trek.location,
+      trek.category,
+      trek.collection || null,
+      trek.difficulty,
+      trek.fitnessLevel,
+      trek.description
+    ];
+
+    if (coverImageValue !== undefined) {
+      updateQuery += `, cover_image = ?`;
+      params.push(coverImageValue);
+    }
+
+    updateQuery += ` WHERE id = ?`;
+    params.push(trekId);
+
+    await conn.query(updateQuery, params);
+
+    // ========== DELETE OLD DATA (safe to delete) ==========
+    await conn.query(`DELETE FROM trek_highlights WHERE trek_id = ?`, [trekId]);
+    await conn.query(`DELETE FROM trek_things_to_carry WHERE trek_id = ?`, [trekId]);
+    await conn.query(`DELETE FROM trek_important_notes WHERE trek_id = ?`, [trekId]);
+
+    // ========== INSERT HIGHLIGHTS ==========
+    if (Array.isArray(trek.highlights) && trek.highlights.length > 0) {
+      for (const highlight of trek.highlights.filter(Boolean)) {
+        await conn.query(
+          'INSERT INTO trek_highlights (trek_id, highlight) VALUES (?, ?)',
+          [trekId, highlight]
+        );
+      }
+    }
+
+    // ========== INSERT THINGS TO CARRY ==========
+    if (Array.isArray(trek.thingsToCarry) && trek.thingsToCarry.length > 0) {
+      for (let i = 0; i < trek.thingsToCarry.length; i++) {
+        const item = trek.thingsToCarry[i];
+        if (item) {
+          await conn.query(
+            'INSERT INTO trek_things_to_carry (trek_id, item, display_order) VALUES (?, ?, ?)',
+            [trekId, item, i + 1]
+          );
+        }
+      }
+    }
+
+    // ========== INSERT IMPORTANT NOTES ==========
+    if (Array.isArray(trek.importantNotes) && trek.importantNotes.length > 0) {
+      for (let i = 0; i < trek.importantNotes.length; i++) {
+        const note = trek.importantNotes[i];
+        if (note) {
+          await conn.query(
+            'INSERT INTO trek_important_notes (trek_id, note, display_order) VALUES (?, ?, ?)',
+            [trekId, note, i + 1]
+          );
+        }
+      }
+    }
+
+    // ========== HANDLE BATCHES (UPDATE APPROACH) ==========
+    // Get existing batch IDs
+    const [existingBatches] = await conn.query(
+      'SELECT id FROM trek_batches WHERE trek_id = ?',
+      [trekId]
+    );
+    const existingBatchIds = existingBatches.map(b => b.id);
+    const existingBatchIdSet = new Set(existingBatchIds);
+    const consumedExistingBatchIds = new Set();
+
+    // Track which batches to keep
+    const batchesToKeep = [];
+
+    if (Array.isArray(trek.batches) && trek.batches.length > 0) {
+      for (let i = 0; i < trek.batches.length; i++) {
+        const batch = trek.batches[i];
+        let batchId = null;
+        const requestedBatchId = Number(batch.id);
+
+        if (
+          Number.isInteger(requestedBatchId) &&
+          existingBatchIdSet.has(requestedBatchId) &&
+          !consumedExistingBatchIds.has(requestedBatchId)
+        ) {
+          batchId = requestedBatchId;
+        } else if (
+          i < existingBatchIds.length &&
+          !consumedExistingBatchIds.has(existingBatchIds[i])
+        ) {
+          // Backward-compatible fallback if UI does not send batch.id
+          batchId = existingBatchIds[i];
+        }
+
+        if (batchId !== null) {
+          // Update existing batch
+          consumedExistingBatchIds.add(batchId);
+          batchesToKeep.push(batchId);
+
+          await conn.query(
+            `UPDATE trek_batches SET
+              start_date = ?,
+              end_date = ?,
+              available_slots = ?,
+              price = ?,
+              min_age = ?,
+              max_age = ?,
+              min_participants = ?,
+              max_participants = ?,
+              duration = ?,
+              status = ?
+            WHERE id = ?`,
+            [
+              batch.startDate,
+              batch.endDate,
+              batch.availableSlots || null,
+              batch.price || null,
+              batch.minAge || null,
+              batch.maxAge || null,
+              batch.minParticipants || null,
+              batch.maxParticipants || null,
+              batch.duration || null,
+              normalizeBatchStatus(batch.batchStatus),
+              batchId
+            ]
+          );
+
+          // Delete and recreate nested data (inclusions, exclusions, itinerary)
+          await conn.query('DELETE FROM batch_inclusions WHERE batch_id = ?', [batchId]);
+          await conn.query('DELETE FROM batch_exclusions WHERE batch_id = ?', [batchId]);
+          
+          // Delete itinerary (cascades to activities)
+          await conn.query('DELETE FROM itinerary_days WHERE batch_id = ?', [batchId]);
+
+          // Insert new nested data
+          await insertBatchNestedData(conn, batchId, batch);
+
+        } else {
+          // Insert new batch
+          const newBatchId = await insertBatch(conn, trekId, batch);
+          batchesToKeep.push(newBatchId);
+        }
+      }
+    }
+
+    // Delete batches that are no longer needed (only if they have no bookings)
+    const batchesToDelete = existingBatchIds.filter(id => !batchesToKeep.includes(id));
+    
+    for (const batchId of batchesToDelete) {
+      // Check if batch has bookings
+      const [[bookingCheck]] = await conn.query(
+        'SELECT COUNT(*) as count FROM bookings WHERE batch_id = ?',
+        [batchId]
+      );
+
+      if (bookingCheck.count === 0) {
+        // Safe to delete
+        await conn.query('DELETE FROM trek_batches WHERE id = ?', [batchId]);
+      } else {
+        // Mark as inactive instead of deleting
+        await conn.query(
+          'UPDATE trek_batches SET status = ? WHERE id = ?',
+          ['inactive', batchId]
+        );
+      }
+    }
+
+    // ========== DELETE GALLERY IMAGES ==========
+    if (Array.isArray(trek.deletedGallery) && trek.deletedGallery.length > 0) {
+      for (const filename of trek.deletedGallery) {
+        await conn.query(
+          `DELETE FROM trek_images WHERE trek_id = ? AND image_url = ?`,
+          [trekId, filename]
+        );
+      }
+    }
+
+    // ========== ADD NEW GALLERY IMAGES ==========
+    if (files?.gallery?.length) {
+      for (const img of files.gallery) {
+        await conn.query(
+          `INSERT INTO trek_images (trek_id, image_url) VALUES (?, ?)`,
+          [trekId, img.path || img.filename]
+        );
+      }
+    }
+
+    await conn.commit();
+    return true;
+
+  } catch (err) {
+    await conn.rollback();
+    console.error('Database error in updateTrek:', err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+// Helper function to insert nested batch data (inclusions, exclusions, itinerary)
+async function insertBatchNestedData(conn, batchId, batch) {
+  // Insert inclusions
+  if (Array.isArray(batch.inclusions) && batch.inclusions.length > 0) {
+    for (const inclusion of batch.inclusions.filter(Boolean)) {
+      await conn.query(
+        'INSERT INTO batch_inclusions (batch_id, inclusion) VALUES (?, ?)',
+        [batchId, inclusion]
+      );
+    }
+  }
+
+  // Insert exclusions
+  if (Array.isArray(batch.exclusions) && batch.exclusions.length > 0) {
+    for (const exclusion of batch.exclusions.filter(Boolean)) {
+      await conn.query(
+        'INSERT INTO batch_exclusions (batch_id, exclusion) VALUES (?, ?)',
+        [batchId, exclusion]
+      );
+    }
+  }
+
+  // Insert itinerary days
+  if (Array.isArray(batch.itineraryDays) && batch.itineraryDays.length > 0) {
+    for (const day of batch.itineraryDays) {
+      const [dayResult] = await conn.query(
+        `INSERT INTO itinerary_days (batch_id, day_number, title) VALUES (?, ?, ?)`,
+        [batchId, day.dayNumber, day.title]
+      );
+
+      const dayId = dayResult.insertId;
+
+      // Insert activities
+      if (Array.isArray(day.activities) && day.activities.length > 0) {
+        for (const activity of day.activities) {
+          await conn.query(
+            `INSERT INTO itinerary_activities (day_id, activity_time, activity_text) VALUES (?, ?, ?)`,
+            [dayId, activity.activityTime, activity.activityText]
+          );
+        }
+      }
+    }
+  }
+}
+
+// Helper function to insert a complete new batch
+async function insertBatch(conn, trekId, batch) {
+  const [batchResult] = await conn.query(
+    `INSERT INTO trek_batches (
+      trek_id,
+      start_date,
+      end_date,
+      available_slots,
+      price,
+      min_age,
+      max_age,
+      min_participants,
+      max_participants,
+      duration,
+      status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      trekId,
+      batch.startDate,
+      batch.endDate,
+      batch.availableSlots || null,
+      batch.price || null,
+      batch.minAge || null,
+      batch.maxAge || null,
+      batch.minParticipants || null,
+      batch.maxParticipants || null,
+      batch.duration || null,
+      normalizeBatchStatus(batch.batchStatus)
+    ]
+  );
+
+  const batchId = batchResult.insertId;
+
+  // Insert nested data
+  await insertBatchNestedData(conn, batchId, batch);
+
+  return batchId;
+}
+
+module.exports = { createTrek, updateTrek };
