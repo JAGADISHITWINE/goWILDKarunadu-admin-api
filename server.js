@@ -20,7 +20,8 @@ const authRoutes = require('./src/routes/common.routes');
 const allowedOrigins = [
   'http://localhost:4200',
   'http://localhost:4700',
-  'https://cdn.jsdelivr.net'
+  'https://cdn.jsdelivr.net',
+  'https://gowildkarunadu-admin.vercel.app'
 ];
 
 app.use(
