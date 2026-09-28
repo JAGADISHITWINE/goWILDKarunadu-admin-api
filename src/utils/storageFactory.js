@@ -8,12 +8,15 @@ const STORAGE_MODE = (process.env.STORAGE_MODE || 'local').toLowerCase();
 
 let s3Client;
 if (STORAGE_MODE === 's3') {
+  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ap-south-1';
+  const accessKeyId = process.env.ADMIN_AWS_ACCESS_KEY || process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.ADMIN_AWS_SECRET_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+
   s3Client = new S3Client({
-    region: process.env.AWS_REGION,
-    credentials: {
-      accessKeyId: process.env.ADMIN_AWS_ACCESS_KEY,
-      secretAccessKey: process.env.ADMIN_AWS_SECRET_KEY,
-    },
+    region,
+    credentials: (accessKeyId && secretAccessKey)
+      ? { accessKeyId, secretAccessKey }
+      : undefined, // fallback to AWS IAM role or default credential provider chain if running on EC2/ECS
   });
 }
 
@@ -61,20 +64,29 @@ async function saveProcessedFile({ buffer, localDir, s3Prefix, filenameBase }) {
   const filename = `${filenameBase}.webp`;
 
   if (STORAGE_MODE === 's3') {
-    const key = `${s3Prefix}/${filename}`;
+    const bucket = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET;
+    const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ap-south-1';
+    const key = `${s3Prefix}/${filename}`.replace(/^\/+/, '');
+
     await s3Client.send(new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET,
+      Bucket: bucket,
       Key: key,
       Body: buffer,
       ContentType: 'image/webp',
     }));
-    const storedUrl = process.env.CLOUDFRONT_URL
-      ? `${process.env.CLOUDFRONT_URL}/${key}`
-      : `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`;
+
+    const customDomain = (process.env.CUSTOM_CDN_URL || process.env.CLOUDFRONT_URL || process.env.S3_CUSTOM_DOMAIN || '').trim().replace(/\/+$/, '');
+    const storedUrl = customDomain
+      ? `${customDomain}/${key}`
+      : `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+
     return { filename, storedUrl, key };
   }
 
   // local mode
+  if (!fs.existsSync(localDir)) {
+    fs.mkdirSync(localDir, { recursive: true });
+  }
   const fullPath = path.join(localDir, filename);
   fs.writeFileSync(fullPath, buffer);
   return { filename, storedUrl: `/uploads/${filename}`, path: fullPath };

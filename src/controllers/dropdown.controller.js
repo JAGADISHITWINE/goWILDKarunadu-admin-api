@@ -244,6 +244,74 @@ const DEFAULT_DROPDOWNS = [
     page: 'Dashboard',
     sortOrder: 27,
     options: ['5', '10', '20', '50'],
+  },
+  {
+    groupKey: 'netBankingBanks',
+    label: 'Supported Net Banking Banks',
+    page: 'Checkout',
+    sortOrder: 28,
+    options: [
+      'HDFC Bank',
+      'State Bank of India',
+      'ICICI Bank',
+      'Axis Bank',
+      'Kotak Mahindra Bank',
+      'Punjab National Bank',
+      'Canara Bank',
+      'Bank of Baroda',
+      'IndusInd Bank',
+      'Union Bank of India',
+      'Karnataka Bank'
+    ],
+  },
+  {
+    groupKey: 'paymentWallets',
+    label: 'Supported Digital Wallets',
+    page: 'Checkout',
+    sortOrder: 29,
+    options: ['Amazon Pay', 'Paytm Wallet', 'PhonePe Wallet', 'MobiKwik'],
+  },
+  {
+    groupKey: 'notificationType',
+    label: 'Notification Alert Type',
+    page: 'Notifications',
+    sortOrder: 30,
+    options: ['Booking Update', 'Trek Alert', 'Weather Alert', 'Guide Notice', 'Special Offer', 'System Notice', 'Blog Story'],
+  },
+  {
+    groupKey: 'notificationTarget',
+    label: 'Notification Target Audience',
+    page: 'Notifications',
+    sortOrder: 31,
+    options: ['All Users', 'Active Trek Bookers', 'Admins & Staff'],
+  },
+  {
+    groupKey: 'trekSortOptions',
+    label: 'Trek Sort Options',
+    page: 'Treks',
+    sortOrder: 32,
+    options: ['Recommended', 'Price: Low to High', 'Price: High to Low', 'Duration: Shortest'],
+  },
+  {
+    groupKey: 'faqCategory',
+    label: 'FAQ Categories',
+    page: 'Help Center',
+    sortOrder: 33,
+    options: ['All FAQs', 'Booking & Payments', 'Trek Prep & Fitness', 'Gear & Packing', 'Safety & Guides', 'Cancellations'],
+  },
+  {
+    groupKey: 'generalStatus',
+    label: 'Entity Status (Active/Inactive)',
+    page: 'General',
+    sortOrder: 34,
+    options: ['Active', 'Inactive'],
+  },
+  {
+    groupKey: 'pageSizeOptions',
+    label: 'Table Page Size Options',
+    page: 'General',
+    sortOrder: 35,
+    options: ['5', '10', '20', '25', '50', '100'],
   }
 ];
 
@@ -470,6 +538,16 @@ async function loadDropdownGroups({ includeInactive = false } = {}) {
   return Array.from(grouped.values());
 }
 
+function notifyUserApiDropdownCacheInvalidation() {
+  const userApiUrl = process.env.USER_API_URL || 'http://localhost:4002';
+  try {
+    const http = userApiUrl.startsWith('https') ? require('https') : require('http');
+    const req = http.request(`${userApiUrl}/api/auth/meta/clear-cache`, { method: 'POST', timeout: 2000 }, () => {});
+    req.on('error', () => {});
+    req.end();
+  } catch (e) {}
+}
+
 let hasSeededDropdowns = false;
 
 async function ensureDropdownBootstrap() {
@@ -627,6 +705,7 @@ async function createDropdownGroup(req, res) {
     }
 
     await conn.commit();
+    notifyUserApiDropdownCacheInvalidation();
     return res.status(201).json({
       success: true,
       message: 'Dropdown group created',
@@ -724,6 +803,7 @@ async function updateDropdownGroup(req, res) {
     params.push(groupId);
     await conn.query(`UPDATE dropdown_groups SET ${fields.join(', ')} WHERE id = ?`, params);
     await conn.commit();
+    notifyUserApiDropdownCacheInvalidation();
 
     return res.status(200).json({
       success: true,
@@ -752,6 +832,7 @@ async function deleteDropdownGroup(req, res) {
       return res.status(404).json({ success: false, message: 'Dropdown group not found' });
     }
 
+    notifyUserApiDropdownCacheInvalidation();
     return res.status(200).json({ success: true, message: 'Dropdown group deleted' });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to delete dropdown group' });
@@ -796,6 +877,8 @@ async function createDropdownOption(req, res) {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [optionId, groupId, label, optionValue, status, sortOrder]
     );
+
+    notifyUserApiDropdownCacheInvalidation();
 
     return res.status(201).json({
       success: true,
@@ -873,6 +956,8 @@ async function updateDropdownOption(req, res) {
     params.push(optionId);
     await db.query(`UPDATE dropdown_options SET ${fields.join(', ')} WHERE id = ?`, params);
 
+    notifyUserApiDropdownCacheInvalidation();
+
     return res.status(200).json({
       success: true,
       message: 'Dropdown option updated'
@@ -896,6 +981,8 @@ async function deleteDropdownOption(req, res) {
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'Dropdown option not found' });
     }
+
+    notifyUserApiDropdownCacheInvalidation();
 
     return res.status(200).json({ success: true, message: 'Dropdown option deleted' });
   } catch (error) {

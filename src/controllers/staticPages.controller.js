@@ -1,4 +1,5 @@
 const staticPagesService = require('../service/staticPages.service');
+const { encrypt, decrypt } = require('../service/cryptoHelper');
 
 function validatePayload(body = {}) {
   const payload = {};
@@ -87,7 +88,19 @@ async function getStaticPage(req, res) {
 
 async function updateStaticPage(req, res) {
   try {
-    const validation = validatePayload(req.body || {});
+    let body = req.body || {};
+    if (body.encryptedPayload) {
+      try {
+        const decrypted = decrypt(body.encryptedPayload);
+        if (decrypted) {
+          body = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        }
+      } catch (decErr) {
+        // continue with raw body if decryption fails
+      }
+    }
+
+    const validation = validatePayload(body);
     if (!validation.valid) {
       return res.status(400).json({
         success: false,

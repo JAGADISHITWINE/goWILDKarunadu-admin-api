@@ -28,7 +28,7 @@ function resolveTrekUploadPath(file) {
     return `${trekUploadPublicBase}/${path.basename(trimmed)}`;
   }
 
-  const candidate = file.publicPath || file.url || file.path || file.filename;
+  const candidate = file.storedUrl || file.publicPath || file.url || file.path || file.filename;
   if (!candidate) return null;
 
   if (typeof candidate === 'string') {
@@ -60,7 +60,7 @@ function resolvePostUploadPath(file) {
     return `${postUploadPublicBase}/${path.basename(trimmed)}`;
   }
 
-  const candidate = file.publicPath || file.url || file.path || file.filename;
+  const candidate = file.storedUrl || file.publicPath || file.url || file.path || file.filename;
   if (!candidate) return null;
 
   if (typeof candidate === 'string') {

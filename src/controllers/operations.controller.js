@@ -512,7 +512,7 @@ exports.getSettings = async (req, res) => {
         supportPhoneRaw: settingsMap.support_phone_raw || '+919876543210',
         whatsappNumber: settingsMap.whatsapp_number || '+91 98765 43210',
         whatsappNumberRaw: settingsMap.whatsapp_number_raw || '919876543210',
-        supportEmail: settingsMap.support_email || 'info@gowildkarunadu.com',
+        supportEmail: settingsMap.support_email || 'info@gowildkarunadu.online',
         contactLocation: settingsMap.contact_location || 'Bengaluru, Karnataka',
         legalName: settingsMap.legal_name || 'goWILD Karunadu Eco-Adventures Pvt Ltd',
         gstin: settingsMap.gstin || '29AAGCW9123K1Z8',

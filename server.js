@@ -33,6 +33,9 @@ const defaultAllowedOrigins = [
   'https://gowildkarunadu.online',
   'https://www.gowildkarunadu.online',
   'https://admin.gowildkarunadu.online',
+  'https://gowildkarunadu.com',
+  'https://www.gowildkarunadu.com',
+  'https://admin.gowildkarunadu.com',
 ];
 
 const allowedOrigins = Array.from(
@@ -186,19 +189,42 @@ app.use('/uploads', express.static(sharedUploadsRoot));
    START SERVER
 ================================= */
 
+const logger = require('./src/utils/logger');
 const PORT = process.env.PORT || 4001;
 
 rbacService.ensureRbacSchema().catch((error) => {
+  logger.error('Failed to initialize RBAC schema:', error);
 });
 couponService.ensureCouponSchema().catch((error) => {
+  logger.error('Failed to initialize Coupon schema:', error);
 });
 auditService.ensureAuditSchema().catch((error) => {
+  logger.error('Failed to initialize Audit schema:', error);
 });
 staticPagesService.ensureStaticPagesSchema().catch((error) => {
+  logger.error('Failed to initialize Static Pages schema:', error);
 });
 completionService.startAutoCompletionScheduler(30);
 
 const server = app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`goWILD Admin API server listening on port ${PORT}`);
 });
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Admin API Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Admin API Uncaught Exception:', error);
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received: closing Admin API HTTP server gracefully');
+  server.close(() => {
+    logger.info('Admin API server closed');
+    process.exit(0);
+  });
+});
+
