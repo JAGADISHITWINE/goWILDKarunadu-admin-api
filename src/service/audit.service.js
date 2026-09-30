@@ -24,29 +24,8 @@ function safeJsonStringify(value) {
 }
 
 async function ensureAuditSchema() {
-  if (schemaReady) return;
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      action_type VARCHAR(80) NOT NULL,
-      entity_type VARCHAR(80) NOT NULL,
-      entity_id VARCHAR(120) NULL,
-      summary VARCHAR(255) NOT NULL,
-      before_data LONGTEXT NULL,
-      after_data LONGTEXT NULL,
-      metadata LONGTEXT NULL,
-      created_by CHAR(36) NULL,
-      created_by_email VARCHAR(191) NULL,
-      created_by_role VARCHAR(100) NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_audit_created_at (created_at),
-      INDEX idx_audit_entity (entity_type, entity_id),
-      INDEX idx_audit_action (action_type)
-    )
-  `);
-
-  schemaReady = true;
+  // Schema is verified and managed by centralized migration runner
+  return;
 }
 
 async function logAuditEvent(payload = {}) {

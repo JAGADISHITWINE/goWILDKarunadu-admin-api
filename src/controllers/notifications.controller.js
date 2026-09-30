@@ -9,27 +9,8 @@ function normalizeDate(value) {
 let hasEnsuredTables = false;
 
 async function ensureNotificationTables() {
-  if (hasEnsuredTables) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS admin_notification_state (
-      admin_id CHAR(36) NOT NULL PRIMARY KEY,
-      last_read_all_at DATETIME NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS admin_notification_reads (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      admin_id CHAR(36) NOT NULL,
-      notification_id VARCHAR(120) NOT NULL,
-      read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_admin_notification_read (admin_id, notification_id),
-      KEY idx_admin_notification_read_admin (admin_id)
-    )
-  `);
-  hasEnsuredTables = true;
+  // Schema is managed by centralized migrations
+  return;
 }
 
 async function getNotifications(req, res) {

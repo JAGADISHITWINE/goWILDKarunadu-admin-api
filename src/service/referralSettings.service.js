@@ -12,41 +12,8 @@ const DEFAULT_SETTINGS = {
 let schemaReady = false;
 
 async function ensureReferralSettingsSchema() {
-  if (schemaReady) return;
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS referral_settings (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      base_discount DECIMAL(10,2) NOT NULL DEFAULT 0,
-      bonus_discount DECIMAL(10,2) NOT NULL DEFAULT 0,
-      bonus_participant_threshold INT NOT NULL DEFAULT 0,
-      free_slot_threshold INT NOT NULL DEFAULT 0,
-      free_slot_value INT NOT NULL DEFAULT 0,
-      is_enabled TINYINT(1) NOT NULL DEFAULT 1,
-      updated_by CHAR(36) NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-
-  const [[row]] = await db.query("SELECT COUNT(*) AS total FROM referral_settings");
-  if (!Number(row?.total)) {
-    await db.query(
-      `INSERT INTO referral_settings
-        (id, base_discount, bonus_discount, bonus_participant_threshold, free_slot_threshold, free_slot_value, is_enabled)
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?)`,
-      [
-        DEFAULT_SETTINGS.baseDiscount,
-        DEFAULT_SETTINGS.bonusDiscount,
-        DEFAULT_SETTINGS.bonusParticipantThreshold,
-        DEFAULT_SETTINGS.freeSlotThreshold,
-        DEFAULT_SETTINGS.freeSlotValue,
-        DEFAULT_SETTINGS.isEnabled,
-      ]
-    );
-  }
-
-  schemaReady = true;
+  // Schema is verified and managed by centralized migration runner (013-create-referral-schema.sql)
+  return;
 }
 
 function mapRowToSettings(row) {

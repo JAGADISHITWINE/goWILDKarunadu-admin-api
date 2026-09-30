@@ -401,36 +401,8 @@ function createSyntheticOption(groupKey, label, index) {
 }
 
 async function ensureDropdownSchema() {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS dropdown_groups (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      group_key VARCHAR(120) NOT NULL UNIQUE,
-      label VARCHAR(150) NOT NULL,
-      page VARCHAR(150) NOT NULL,
-      status ENUM('active','inactive') NOT NULL DEFAULT 'active',
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      KEY idx_page (page)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS dropdown_options (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      group_id CHAR(36) NOT NULL,
-      label VARCHAR(150) NOT NULL,
-      option_value VARCHAR(150) NOT NULL,
-      status ENUM('active','inactive') NOT NULL DEFAULT 'active',
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_group_value (group_id, option_value),
-      KEY idx_group_id (group_id),
-      KEY idx_group_status (group_id, status),
-      CONSTRAINT fk_dropdown_options_group FOREIGN KEY (group_id) REFERENCES dropdown_groups (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
+  // Schema is managed by centralized migrations
+  return;
 }
 
 async function seedDefaultDropdowns() {

@@ -4,80 +4,9 @@ const auditService = require('../service/audit.service');
 
 // Ensure database tables exist for operations
 async function ensureOperationsSchema() {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS booking_participants (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      booking_id VARCHAR(100) NOT NULL,
-      full_name VARCHAR(150) NOT NULL,
-      age INT NOT NULL DEFAULT 18,
-      gender ENUM('Male', 'Female', 'Other') NOT NULL DEFAULT 'Male',
-      govt_id_type VARCHAR(100) NOT NULL DEFAULT 'Aadhaar Card',
-      govt_id_number VARCHAR(100) NOT NULL,
-      blood_group VARCHAR(10) NOT NULL DEFAULT 'O+',
-      medical_conditions VARCHAR(255) NOT NULL DEFAULT 'None / Fit to Trek',
-      emergency_contact_name VARCHAR(150),
-      emergency_contact_phone VARCHAR(50),
-      dietary_preference VARCHAR(100) NOT NULL DEFAULT 'Vegetarian',
-      checked_in TINYINT(1) NOT NULL DEFAULT 0,
-      checked_in_at DATETIME NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      KEY idx_booking_id (booking_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS basecamp_checkins (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      booking_id VARCHAR(100) NOT NULL,
-      batch_id VARCHAR(100) NULL,
-      pass_reference VARCHAR(100) NOT NULL,
-      lead_customer_name VARCHAR(150) NOT NULL,
-      participants_count INT NOT NULL DEFAULT 1,
-      checked_in_count INT NOT NULL DEFAULT 1,
-      verified_by VARCHAR(100) NOT NULL DEFAULT 'Basecamp Coordinator',
-      notes TEXT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_checkin_booking (booking_id),
-      KEY idx_checkin_batch (batch_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS gear_inventory (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      item_name VARCHAR(150) NOT NULL,
-      category VARCHAR(100) NOT NULL,
-      total_quantity INT NOT NULL DEFAULT 10,
-      rented_quantity INT NOT NULL DEFAULT 0,
-      rental_rate_per_day DECIMAL(10,2) NOT NULL DEFAULT 100.00,
-      item_condition VARCHAR(100) NOT NULL DEFAULT 'Good Condition',
-      location VARCHAR(100) NOT NULL DEFAULT 'Main Basecamp Gear Store',
-      status ENUM('active', 'maintenance', 'retired') NOT NULL DEFAULT 'active',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS batch_expenses (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      batch_id VARCHAR(100) NOT NULL,
-      expense_category VARCHAR(150) NOT NULL,
-      description VARCHAR(255) NOT NULL,
-      amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-      paid_to VARCHAR(150) NULL,
-      payment_mode VARCHAR(100) NOT NULL DEFAULT 'UPI',
-      receipt_ref VARCHAR(100) NULL,
-      recorded_by VARCHAR(100) NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_expense_batch (batch_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
+  // Schema is managed by centralized migrations
+  return;
 }
-
-// Initialise schema
-ensureOperationsSchema().catch(err => {});
 
 // ── Check-in APIs ──
 exports.recordCheckin = async (req, res) => {

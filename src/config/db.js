@@ -78,39 +78,4 @@ pool.on('connection', (connection) => {
 
 const db = pool.promise();
 
-// Test connection and auto-migrate missing schema
-(async () => {
-  try {
-    const conn = await db.getConnection();
-    // Auto-migrate captain columns on trek_batches
-    try {
-      const [captainCols] = await conn.query("SHOW COLUMNS FROM trek_batches LIKE 'captain_name'");
-      if (!Array.isArray(captainCols) || captainCols.length === 0) {
-        await conn.query(`
-          ALTER TABLE trek_batches
-          ADD COLUMN captain_name VARCHAR(150) NULL,
-          ADD COLUMN captain_phone VARCHAR(50) NULL,
-          ADD COLUMN captain_email VARCHAR(150) NULL
-        `);
-      }
-    } catch (e) {
-    }
-
-    // Auto-migrate collection column on treks
-    try {
-      const [colCols] = await conn.query("SHOW COLUMNS FROM treks LIKE 'collection'");
-      if (!Array.isArray(colCols) || colCols.length === 0) {
-        await conn.query(`
-          ALTER TABLE treks
-          ADD COLUMN collection VARCHAR(100) NULL AFTER category
-        `);
-      }
-    } catch (e) {
-    }
-
-    conn.release();
-  } catch (err) {
-  }
-})();
-
 module.exports = db;

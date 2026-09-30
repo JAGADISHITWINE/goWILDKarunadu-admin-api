@@ -78,6 +78,8 @@ router.delete('/coupons/:id', requirePermission('treks.manage'), coupon.deleteCo
 /* ---------- USERS ---------- */
 router.get('/getUsers', user.getUsersData);
 router.get('/user/:userid/getUserById', user.getUserById);
+router.get('/user/:userid/wallet', requirePermission('users.view'), user.getUserWallet);
+router.post('/user/:userid/wallet/credit', requirePermission('users.manage'), user.creditUserWallet);
 
 /* ---------- TREKS ---------- */
 router.post(

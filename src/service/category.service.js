@@ -44,35 +44,8 @@ async function columnExists(tableName, columnName) {
 }
 
 async function ensureCategorySchema() {
-  if (schemaReady) return;
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS categories (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      name VARCHAR(100) NOT NULL,
-      slug VARCHAR(120) NOT NULL,
-      status ENUM('active','inactive') NOT NULL DEFAULT 'active',
-      sort_order INT NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY slug (slug),
-      KEY idx_status_sort (status, sort_order)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-
-  if (!(await columnExists('categories', 'status'))) {
-    await db.query(`ALTER TABLE categories ADD COLUMN status ENUM('active','inactive') NOT NULL DEFAULT 'active' AFTER slug`);
-  }
-
-  if (!(await columnExists('categories', 'sort_order'))) {
-    await db.query(`ALTER TABLE categories ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER status`);
-  }
-
-  if (!(await columnExists('categories', 'updated_at'))) {
-    await db.query(`ALTER TABLE categories ADD COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at`);
-  }
-
-  schemaReady = true;
+  // Schema is verified and managed by centralized migration runner
+  return;
 }
 
 async function seedDefaultCategories() {

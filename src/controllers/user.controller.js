@@ -106,5 +106,56 @@ async function getUserById(req, res) {
     }
 }
 
+async function getUserWallet(req, res) {
+    try {
+        const { userid } = req.params;
+        if (!userid) {
+            return res.status(400).json({ success: false, message: 'User ID is required' });
+        }
+        const walletService = require('../service/wallet.service');
+        const wallet = await walletService.getWallet(userid);
+        return res.status(200).json({
+            success: true,
+            data: encrypt(wallet)
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to retrieve wallet information', error: error.message });
+    }
+}
 
-module.exports = { getUsersData, getUserById };
+async function creditUserWallet(req, res) {
+    try {
+        const { userid } = req.params;
+        const amount = parseFloat(req.body?.amount || 0);
+        const bonusAmount = parseFloat(req.body?.bonusAmount || 0);
+        const reason = String(req.body?.reason || 'Admin Adjustment').trim();
+        const referenceId = String(req.body?.referenceId || `ADM-${Date.now()}`).trim();
+
+        if (!userid) {
+            return res.status(400).json({ success: false, message: 'User ID is required' });
+        }
+        if (amount <= 0 && bonusAmount <= 0) {
+            return res.status(400).json({ success: false, message: 'Either amount or bonusAmount must be greater than zero' });
+        }
+
+        const walletService = require('../service/wallet.service');
+        await walletService.creditWallet({
+            userId: userid,
+            amount,
+            bonusAmount,
+            reason,
+            referenceId,
+        });
+
+        const updatedWallet = await walletService.getWallet(userid);
+        return res.status(200).json({
+            success: true,
+            message: 'Wallet credited successfully',
+            data: encrypt(updatedWallet)
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to credit user wallet', error: error.message });
+    }
+}
+
+module.exports = { getUsersData, getUserById, getUserWallet, creditUserWallet };

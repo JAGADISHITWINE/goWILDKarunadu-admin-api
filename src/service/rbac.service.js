@@ -86,44 +86,6 @@ async function columnExists(tableName, columnName) {
 async function ensureRbacSchema() {
   if (schemaReady) return;
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS admin_roles (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      role_key VARCHAR(64) NOT NULL UNIQUE,
-      role_name VARCHAR(100) NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS admin_permissions (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      permission_key VARCHAR(100) NOT NULL UNIQUE,
-      description VARCHAR(255) NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS admin_role_permissions (
-      role_id CHAR(36) NOT NULL,
-      permission_id CHAR(36) NOT NULL,
-      allowed TINYINT(1) NOT NULL DEFAULT 0,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY(role_id, permission_id),
-      CONSTRAINT fk_arp_role FOREIGN KEY (role_id) REFERENCES admin_roles(id) ON DELETE CASCADE,
-      CONSTRAINT fk_arp_permission FOREIGN KEY (permission_id) REFERENCES admin_permissions(id) ON DELETE CASCADE
-    )
-  `);
-
-  const hasRoleId = await columnExists("admins", "role_id");
-  if (!hasRoleId) {
-    await db.query(`ALTER TABLE admins ADD COLUMN role_id CHAR(36) NULL`);
-  } else {
-    await db.query(`ALTER TABLE admins MODIFY COLUMN role_id CHAR(36) NULL`);
-  }
-
   const [roleRows] = await db.query("SELECT id, role_key FROM admin_roles");
   const roleMap = new Map(roleRows.map((row) => [row.role_key, String(row.id || '').trim()]));
 

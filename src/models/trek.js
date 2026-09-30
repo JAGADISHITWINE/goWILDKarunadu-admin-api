@@ -10,51 +10,19 @@ function normalizeBatchStatus(rawStatus) {
   return ALLOWED_BATCH_STATUSES.has(normalized) ? normalized : 'active';
 }
 
-async function ensureCollectionColumn(conn) {
-  const [columns] = await conn.query(`SHOW COLUMNS FROM treks LIKE 'collection'`);
-  if (!Array.isArray(columns) || columns.length) {
-    return;
-  }
-
-  await conn.query(`
-    ALTER TABLE treks
-    ADD COLUMN collection VARCHAR(100) NULL AFTER category
-  `);
+async function ensureCollectionColumn() {
+  // Managed by centralized migrations
+  return;
 }
 
-async function ensureBatchCaptainColumns(conn) {
-  const [columns] = await conn.query(`SHOW COLUMNS FROM trek_batches LIKE 'captain_name'`);
-  if (!Array.isArray(columns) || columns.length === 0) {
-    await conn.query(`
-      ALTER TABLE trek_batches
-      ADD COLUMN captain_name VARCHAR(150) NULL,
-      ADD COLUMN captain_phone VARCHAR(50) NULL,
-      ADD COLUMN captain_email VARCHAR(150) NULL
-    `);
-  }
+async function ensureBatchCaptainColumns() {
+  // Managed by centralized migrations
+  return;
 }
 
-async function ensureCouponTable(conn) {
-  await conn.query(`
-    CREATE TABLE IF NOT EXISTS trek_coupons (
-      id CHAR(36) NOT NULL PRIMARY KEY,
-      trek_id CHAR(36) NOT NULL,
-      code VARCHAR(60) NOT NULL,
-      discount_type ENUM('percentage', 'flat') NOT NULL DEFAULT 'percentage',
-      discount_value DECIMAL(10,2) NOT NULL,
-      min_booking_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-      max_discount_amount DECIMAL(10,2) NULL,
-      start_date DATETIME NULL,
-      end_date DATETIME NULL,
-      usage_limit INT NULL,
-      usage_count INT NOT NULL DEFAULT 0,
-      is_active TINYINT(1) NOT NULL DEFAULT 1,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_trek_coupon_code (trek_id, code),
-      KEY idx_trek_coupons_trek_id (trek_id)
-    )
-  `);
+async function ensureCouponTable() {
+  // Managed by centralized migrations
+  return;
 }
 
 function normalizeCouponForInsert(rawCoupon = {}) {
